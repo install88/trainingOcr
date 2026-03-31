@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf C:*)",
+      "Bash(rm -rf ~/)",
+      "Bash(del /f /s /q C:\\*)",
+      "Bash(format *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(shutdown*)",
+      "Bash(reg delete *)",
+      "Bash(rmdir /s /q C:\\*)"
+    ]
+  }
+}

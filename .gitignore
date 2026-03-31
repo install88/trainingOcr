@@ -1,0 +1,55 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+
+# === 訓練產出（太大不上傳）===
+output/det/
+output/rec/
+output/ocr_results/
+
+# === 預訓練模型（太大不上傳）===
+pretrained_models/*.pdparams
+pretrained_models/*.tar
+pretrained_models/*/
+
+# === 資料集圖片（太大不上傳，只上傳結構）===
+dataset/images/*.jpg
+dataset/images/*.jpeg
+dataset/images/*.png
+dataset/images/*.bmp
+dataset/det/train/*.jpg
+dataset/det/train/*.jpeg
+dataset/det/train/*.png
+dataset/det/val/*.jpg
+dataset/det/val/*.jpeg
+dataset/det/val/*.png
+dataset/rec/train/*.jpg
+dataset/rec/val/*.jpg
+
+# === eval_cpp_runner（C++ 專案，另外管理）===
+eval_cpp_runner/
+
+# === IDE / OS ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+.DS_Store
+
+# === Jupyter ===
+.ipynb_checkpoints/
+
+# === 其他 ===
+*.log
+*.tmp
+gh.zip
+gh_cli/
+.claude/settings.local.json
