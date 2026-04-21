@@ -6,7 +6,7 @@ Global:
   log_smooth_window: 20
   print_batch_step: 10
   save_model_dir: C:/Users/andy_ac_chen/Desktop/claudeProject/output/det/
-  save_epoch_step: 10
+  save_epoch_step: 50
   eval_batch_step:
   - 0
   - 500
