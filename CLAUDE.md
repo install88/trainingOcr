@@ -19,9 +19,12 @@
 | 自動標注腳本 | ✅ 完成 | tools/auto_label.py（用 PaddleOCR 辨識後產生草稿） |
 | 資料集分割 | ✅ 完成 | train 744 / val 186（共 930 筆，2026-04-20 更新） |
 | det dataset zip | ✅ 完成 | dataset/det_dataset.zip（39.5 MB） |
-| Colab det notebook | ✅ 完成 | notebooks/train_det_colab.ipynb（含 baseline + 訓練後比較） |
-| det 模型訓練 | ⏳ 等待 | 需上傳 zip 到 Google Drive 後跑 Colab |
-| rec 模型訓練 | 🔜 未開始 | 等 det 完成後再做 |
+| Colab det notebook | ✅ 完成 | notebooks/train_det_colab.ipynb（Drive checkpoint + resume 區塊 A/B） |
+| det 模型訓練 | ✅ 完成 | Colab 跑到 epoch 191，best_accuracy 在 epoch 135（hmean 0.834） |
+| rec dataset 生成 | ✅ 完成 | tools/prepare_rec_dataset.py → 833 train / 208 val（共 1041 crops） |
+| rec dataset zip | ✅ 完成 | dataset/rec_dataset.zip（5.7 MB） |
+| Colab rec notebook | ✅ 完成 | notebooks/train_rec_colab.ipynb（對齊 det：Drive checkpoint + resume A/B） |
+| rec 模型訓練 | ⏳ 等待 | 需上傳 rec_dataset.zip 到 Google Drive 後跑 Colab |
 | ONNX 部署測試 | 🔜 未開始 | 等訓練完成 |
 
 ---
@@ -81,7 +84,12 @@ claudeProject/
 │   │   ├── train_label.txt
 │   │   └── val_label.txt
 │   ├── det_dataset.zip            ← 上傳 Google Drive 用（39.5 MB）
-│   └── rec/                       ← （未來）rec 訓練資料
+│   ├── rec/
+│   │   ├── train/                 ← rec 訓練 crop（833 張）
+│   │   ├── val/                   ← rec 驗證 crop（208 張）
+│   │   ├── train_label.txt
+│   │   └── val_label.txt
+│   └── rec_dataset.zip            ← 上傳 Google Drive 用（5.7 MB）
 ├── configs/
 │   ├── det/PP-OCRv4_mobile_det_finetune.yml
 │   └── rec/PP-OCRv4_mobile_rec_finetune.yml
@@ -99,6 +107,7 @@ claudeProject/
 │   ├── import_labeled_data.py     ← ★ 匯入並合併標注資料
 │   ├── auto_label.py              ← ★ 自動產生 Label.txt 草稿
 │   ├── split_dataset.py           ← 分割 train/val
+│   ├── prepare_rec_dataset.py     ← ★ 從 det 手動標注裁 crop 產生 rec 資料集
 │   ├── run_ocr.py                 ← 本機推論（畫紅框 + JSON）
 │   ├── export_model.py            ← 匯出推論模型
 │   ├── convert_to_onnx.py         ← 轉換為 ONNX

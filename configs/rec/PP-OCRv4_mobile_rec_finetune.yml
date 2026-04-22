@@ -106,7 +106,7 @@ Train:
 Eval:
   dataset:
     name: SimpleDataSet
-    data_dir: C:/Users/andy_ac_chen/Desktop/claudeProject/dataset/rec/
+    data_dir: C:/Users/andy_ac_chen/Desktop/claudeProject/dataset/rec/val/
     label_file_list:
       - C:/Users/andy_ac_chen/Desktop/claudeProject/dataset/rec/val_label.txt
     transforms:
