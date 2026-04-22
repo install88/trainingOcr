@@ -20,9 +20,12 @@ prepare_rec_dataset.py — 從 det 手動標註產生 rec 訓練資料
 
 用法：
     python tools/prepare_rec_dataset.py
+    python tools/prepare_rec_dataset.py --normalize    # 標準化：清除所有空格（. / : 等標點保留）
 """
 
+import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +34,8 @@ import numpy as np
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+WHITESPACE_RE = re.compile(r"\s+")
 
 PROJECT = Path(__file__).resolve().parent.parent
 DET_DIR = PROJECT / "dataset" / "det"
@@ -63,7 +68,7 @@ def get_rotated_crop(img, points):
     return crop
 
 
-def process_split(split_name, src_img_dir, src_label_file, out_img_dir, out_label_file):
+def process_split(split_name, src_img_dir, src_label_file, out_img_dir, out_label_file, normalize=False):
     out_img_dir.mkdir(parents=True, exist_ok=True)
 
     n_images = 0
@@ -72,6 +77,7 @@ def process_split(split_name, src_img_dir, src_label_file, out_img_dir, out_labe
     n_skip_empty = 0
     n_skip_small = 0
     n_skip_read = 0
+    n_normalized = 0
     label_lines = []
 
     with open(src_label_file, "r", encoding="utf-8") as f:
@@ -113,6 +119,15 @@ def process_split(split_name, src_img_dir, src_label_file, out_img_dir, out_labe
                     n_skip_small += 1
                     continue
 
+                if normalize:
+                    new_text = WHITESPACE_RE.sub("", text)
+                    if new_text != text:
+                        n_normalized += 1
+                    text = new_text
+                    if not text:
+                        n_skip_empty += 1
+                        continue
+
                 crop_name = f"{stem}_box{i:02d}.jpg"
                 cv2.imwrite(str(out_img_dir / crop_name), crop)
                 label_lines.append(f"{crop_name}\t{text}")
@@ -128,6 +143,8 @@ def process_split(split_name, src_img_dir, src_label_file, out_img_dir, out_labe
     print(f"  跳過 - 空文字：{n_skip_empty}")
     print(f"  跳過 - 太小：{n_skip_small}")
     print(f"  跳過 - 讀不到圖：{n_skip_read}")
+    if normalize:
+        print(f"  normalize 移除空格的行數：{n_normalized}")
     print(f"  輸出：{out_img_dir}")
     print(f"  標注：{out_label_file}")
 
@@ -135,7 +152,13 @@ def process_split(split_name, src_img_dir, src_label_file, out_img_dir, out_labe
 
 
 def main():
-    print(f"=== 從 {DET_DIR} 產生 rec 資料集到 {REC_DIR} ===\n")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--normalize", action="store_true",
+                        help="標準化 transcription：清除所有空格（半形/全形/tab）。標點 . / : 等保留")
+    args = parser.parse_args()
+
+    print(f"=== 從 {DET_DIR} 產生 rec 資料集到 {REC_DIR} ===")
+    print(f"normalize = {args.normalize}\n")
 
     total_train = process_split(
         "train",
@@ -143,6 +166,7 @@ def main():
         DET_DIR / "train_label.txt",
         REC_DIR / "train",
         REC_DIR / "train_label.txt",
+        normalize=args.normalize,
     )
     total_val = process_split(
         "val",
@@ -150,6 +174,7 @@ def main():
         DET_DIR / "val_label.txt",
         REC_DIR / "val",
         REC_DIR / "val_label.txt",
+        normalize=args.normalize,
     )
 
     print(f"\n{'='*60}")
