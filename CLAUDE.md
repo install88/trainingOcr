@@ -21,6 +21,7 @@
 | det dataset zip | ✅ 完成 | dataset/det_dataset.zip（39.5 MB） |
 | Colab det notebook | ✅ 完成 | notebooks/train_det_colab.ipynb（Drive checkpoint + resume 區塊 A/B） |
 | det 模型訓練 | ✅ 完成 | Colab 跑到 epoch 191，best_accuracy 在 epoch 135（hmean 0.834） |
+| Colab det v5 notebook | ✅ 完成 | notebooks/train_det_v5_colab.ipynb（未來想嘗試 v5，含多語資料優勢） |
 | rec dataset 生成 | ✅ 完成 | tools/prepare_rec_dataset.py → 833 train / 208 val（共 1041 crops） |
 | rec dataset zip | ✅ 完成 | dataset/rec_dataset.zip（5.7 MB） |
 | Colab rec notebook | ✅ 完成 | notebooks/train_rec_colab.ipynb（對齊 det：Drive checkpoint + resume A/B） |
@@ -91,15 +92,18 @@ claudeProject/
 │   │   └── val_label.txt
 │   └── rec_dataset.zip            ← 上傳 Google Drive 用（5.7 MB）
 ├── configs/
-│   ├── det/PP-OCRv4_mobile_det_finetune.yml
+│   ├── det/
+│   │   ├── PP-OCRv4_mobile_det_finetune.yml
+│   │   └── PP-OCRv5_mobile_det_finetune.yml   ← 架構同 v4，僅預訓練資料不同
 │   └── rec/PP-OCRv4_mobile_rec_finetune.yml
 ├── pretrained_models/             ← 預訓練權重（Colab 自動下載）
 ├── output/
 │   ├── det/                       ← det 訓練產出
 │   └── rec/                       ← rec 訓練產出
 ├── notebooks/
-│   ├── train_det_colab.ipynb      ← Colab det 訓練（含 baseline 比較）
-│   └── train_rec_colab.ipynb      ← Colab rec 訓練（未來用）
+│   ├── train_det_colab.ipynb      ← Colab det v4 訓練
+│   ├── train_det_v5_colab.ipynb   ← Colab det v5 訓練（多語 baseline 較高）
+│   └── train_rec_colab.ipynb      ← Colab rec 訓練
 ├── eval_cpp_runner/               ← C++ ONNX 推論測試
 │   ├── models/                    ← ONNX 模型檔
 │   └── ocr_cpp/                   ← C++ 推論原始碼
