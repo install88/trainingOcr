@@ -9,9 +9,15 @@ build/
 *.whl
 
 # === 訓練產出（太大不上傳）===
-output/det/
-output/rec/
+# 用 /* 排除目錄內容但保留目錄本身，才能用 ! 把特定檔案拉回來
+output/det/*
+output/rec/*
 output/ocr_results/
+# export 腳本要上 repo（換機器也能用）
+!output/det/export_*.ps1
+!output/det/export_*.bat
+!output/rec/export_*.ps1
+!output/rec/export_*.bat
 
 # === 預訓練模型（太大不上傳）===
 pretrained_models/*.pdparams
