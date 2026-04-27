@@ -1,12 +1,12 @@
 Global:
   model_name: PP-OCRv4_mobile_rec
   debug: false
-  use_gpu: false   # AMD Radeon 無 CUDA，使用 CPU 訓練
-  epoch_num: 200
+  use_gpu: false   # AMD Radeon 無 CUDA，使用 CPU 訓練（Colab 會用 -o 覆寫為 true）
+  epoch_num: 100               # 1840 crops × 100 ep / batch 64 ≈ 2900 step,足夠收斂 (原 200)
   log_smooth_window: 20
   print_batch_step: 10
   save_model_dir: C:/Users/andy_ac_chen/Desktop/claudeProject/output/rec/
-  save_epoch_step: 10
+  save_epoch_step: 5           # 每 5 epoch 存 checkpoint (原 10),救急更頻繁
   eval_batch_step: [0, 500]
   cal_metric_during_train: true
   # 放置預訓練權重路徑（下載後修改此行）
@@ -31,8 +31,8 @@ Optimizer:
   beta2: 0.999
   lr:
     name: Cosine
-    learning_rate: 0.0005  # Fine-tune 時使用較小 lr
-    warmup_epoch: 5
+    learning_rate: 0.0003  # Fine-tune 用較小 lr (原 0.0005),保守保護 pretrained 字符識別能力
+    warmup_epoch: 3        # epoch 從 200 縮到 100,warmup 同步縮 (原 5)
   regularizer:
     name: L2
     factor: 3.0e-05
