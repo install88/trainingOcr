@@ -59,3 +59,10 @@ Thumbs.db
 gh.zip
 gh_cli/
 .claude/settings.local.json
+
+# === 本機產物 / 備份（不上傳）===
+dataset_old_*/
+output/compare_*/
+dataset/*.zip
+podcast/
+*.pptx

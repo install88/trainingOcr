@@ -2,11 +2,11 @@ Global:
   model_name: PP-OCRv5_mobile_det
   debug: false
   use_gpu: false   # AMD Radeon 無 CUDA，使用 CPU 訓練（Colab 會用 -o 覆寫為 true）
-  epoch_num: &epoch_num 200
+  epoch_num: &epoch_num 100   # 三層標記資料量夠,100 epoch 足夠 (原本 200)
   log_smooth_window: 20
   print_batch_step: 10
   save_model_dir: C:/Users/andy_ac_chen/Desktop/claudeProject/output/det_v5/
-  save_epoch_step: 10
+  save_epoch_step: 5          # 每 5 epoch 存 checkpoint (原本 10),救急更頻繁
   eval_batch_step:
   - 0
   - 500
@@ -52,8 +52,8 @@ Optimizer:
   beta2: 0.999
   lr:
     name: Cosine
-    learning_rate: 0.0005  # Fine-tune 用較小 lr（v5 官方 pretraining 是 0.001 / 8 GPU）
-    warmup_epoch: 2
+    learning_rate: 0.0001  # 三層標記策略下用更小 lr,保護 pretrained 廣義能力 (原本 0.0005)
+    warmup_epoch: 5        # 慢啟動,前 5 epoch 線性 ramp-up (原本 2)
   regularizer:
     name: L2
     factor: 5.0e-05
@@ -90,8 +90,13 @@ Train:
         - type: Affine
           args:
             rotate:
-            - -10
-            - 10
+            - -25            # 手機拍照容易歪 → 加大旋轉範圍 (原本 -10)
+            - 25
+        - type: Multiply
+          args:
+            mul:             # 亮度 ±30% → 反光/低光環境訓練
+            - 0.7
+            - 1.3
         - type: Resize
           args:
             size:
