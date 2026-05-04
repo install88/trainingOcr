@@ -1,125 +1,136 @@
-# PPOCRv4 Mobile OCR 訓練專案
+# PPOCRv5 Mobile OCR 訓練專案
 
 ## 專案目的
 
-使用 **PPOCRv4 mobile** 模型訓練自訂 OCR，最終目標是**部署至手機端（C++ ONNX Runtime）**。
-應用場景：辨識產品上的日期（有效期限 EXP / 製造日期 MFG）。
-
-訓練順序：**先訓練 det（文字偵測）模型**，完成後再訓練 rec（文字識別）模型。
+辨識產品包裝上的日期（有效期限 EXP / 製造日期 MFG / 保存期限），最終部署至**手機端 C++ ONNX Runtime**。
 
 ---
 
-## 目前進度（給 Claude 快速上手用）
+## 目前進度（2026-05-04 更新）
 
 | 階段 | 狀態 | 備註 |
 |------|------|------|
-| 專案架構建立 | ✅ 完成 | configs / tools / notebooks 全部就位 |
-| PPOCRLabel 標注環境 | ✅ 完成 | 另一台電腦也能安裝（見 MANUAL.md） |
-| 資料匯入腳本 | ✅ 完成 | tools/import_labeled_data.py |
-| 自動標注腳本 | ✅ 完成 | tools/auto_label.py（用 PaddleOCR 辨識後產生草稿） |
-| 資料集分割 | ✅ 完成 | train 744 / val 186（共 930 筆，2026-04-20 更新） |
-| det dataset zip | ✅ 完成 | dataset/det_dataset.zip（39.5 MB） |
-| Colab det notebook | ✅ 完成 | notebooks/train_det_colab.ipynb（Drive checkpoint + resume 區塊 A/B） |
-| det 模型訓練 | ✅ 完成 | Colab 跑到 epoch 191，best_accuracy 在 epoch 135（hmean 0.834） |
-| Colab det v5 notebook | ✅ 完成 | notebooks/train_det_v5_colab.ipynb（未來想嘗試 v5，含多語資料優勢） |
-| rec dataset 生成 | ✅ 完成 | tools/prepare_rec_dataset.py → 833 train / 208 val（共 1041 crops） |
-| rec dataset zip | ✅ 完成 | dataset/rec_dataset.zip（5.7 MB） |
-| Colab rec notebook | ✅ 完成 | notebooks/train_rec_colab.ipynb（對齊 det：Drive checkpoint + resume A/B） |
-| rec 模型訓練 | ⏳ 等待 | 需上傳 rec_dataset.zip 到 Google Drive 後跑 Colab |
-| ONNX 部署測試 | 🔜 未開始 | 等訓練完成 |
+| 專案架構 | ✅ | configs / tools / notebooks 就位 |
+| 標注環境 | ✅ | PPOCRLabel，見 MANUAL.md |
+| 資料集（det） | ✅ | **1,828 張**（train 1462 / val 366），backup 共 1,829 jpg |
+| det dataset zip | ✅ | det_dataset.zip（84.9 MB），2026-04-30 打包，在 Google Drive |
+| det v5 訓練（第一輪） | ✅ | hmean **89.9%**，best_epoch=25，已轉 ONNX |
+| det v5 訓練（第二輪） | 🔜 **待執行** | config 已改好，需 push 後重跑 Colab |
+| 資料集（rec） | ✅ | **~1,792 train / ~512 val**（crop 比舊版翻倍） |
+| rec dataset zip | ✅ | rec_dataset.zip，在 Google Drive |
+| rec 訓練 | ✅ | best acc **91.86%**（best_epoch≈89），已完成 |
+| rec 轉 ONNX | 🔜 **待執行** | 訓練完成，尚未匯出 |
+| compare 工具驗證 | 🔜 **待執行** | 等 det 第二輪 ONNX 出來後跑 |
+| C++ 部署測試 | 🔜 未開始 | |
+
+---
+
+## ⚠️ 當前最重要的待辦（依序執行）
+
+1. **git push det config**（已改好，尚未 push）
+   ```cmd
+   cd C:\Users\andy_ac_chen\Desktop\claudeProject
+   git add configs/det/PP-OCRv5_mobile_det_finetune.yml tools/compare_det_onnx.py
+   git commit -m "det: shrink_ratio 0.4->0.3, remove Fliplr, Resize 3->2, unclip 1.5->2.0"
+   git push
+   ```
+
+2. **Colab 重跑 det 訓練**（`train_det_v5_colab.ipynb`，從 pretrained 開始，不是 epoch 25）
+
+3. **det best_model → 轉 ONNX** → 下載到 `eval_cpp_runner/models/ch_PP-OCRv4_det_infer_new.onnx`
+
+4. **rec best_accuracy → 轉 ONNX** → 下載到 `eval_cpp_runner/models/ch_PP-OCRv4_rec_infer_new.onnx`
+
+5. **跑 compare 驗證**：`python tools\compare_det_onnx.py --date 20260428 --n 15`
+
+---
+
+## 已知問題與解決方案
+
+### Det 框切短問題（已在 config 修正，等重訓）
+- **症狀**：`有效日期:2027.10.02` 框只偵測到 `27.10.02`（`有效日期:20` 被切掉）
+- **根本原因**：`shrink_ratio=0.4` 太激進，訓練時把前綴像素縮到 ground truth 之外，probability map 沒有前綴訊號
+- **推論參數（thresh、unclip_ratio）已確認無效**，一定要重訓才能修
+- **Config 修正內容**（已改，等 push）：
+
+| 參數 | 舊值 | 新值 |
+|------|------|------|
+| MakeBorderMap shrink_ratio | 0.4 | **0.3** |
+| MakeShrinkMap shrink_ratio | 0.4 | **0.3** |
+| PostProcess unclip_ratio | 1.5 | **2.0** |
+| IaaAugment Fliplr | p=0.5 | **移除** |
+| Resize size | [0.5, 3] | **[0.5, 2]** |
+
+### Rec 字母→數字替換問題（Catastrophic Forgetting）
+- **症狀**：`E`→`2`、`N`→`1`（舊版 rec ONNX）
+- **原因**：fine-tune 資料以數字日期為主，字母特徵被覆蓋
+- **新版 rec（91.86% acc）是否改善**：待匯出 ONNX 後用 compare 工具驗證
+
+---
+
+## 模型版本對照
+
+| 檔案 | 內容 | 來源 |
+|------|------|------|
+| `eval_cpp_runner/models/ch_PP-OCRv4_det_infer.onnx` | Det pretrained（原廠） | PaddleOCR 官方 |
+| `eval_cpp_runner/models/ch_PP-OCRv4_det_infer_new.onnx` | Det finetuned v5（第一輪，hmean 89.9%） | output_det_v5/best_model epoch 25 |
+| `eval_cpp_runner/models/ch_PP-OCRv4_rec_infer.onnx` | Rec pretrained（原廠） | PaddleOCR 官方 |
+| `eval_cpp_runner/models/ch_PP-OCRv4_rec_infer_new.onnx` | Rec finetuned（acc 91.86%，**待更新**） | output_rec/best_accuracy |
+
+---
+
+## Compare 工具參數（tools/compare_det_onnx.py）
+
+- **thresh=0.3**（對齊 config PostProcess）
+- **box_thresh=0.4**（原廠 0.6 → 降低救低信心日期框）
+- **unclip_ratio=2.0**（對齊 config PostProcess）
+- **use_dilation=True**（橋接斷點文字）
+
+執行範例：
+```powershell
+cd C:\Users\andy_ac_chen\Desktop\claudeProject
+python tools\compare_det_onnx.py --date 20260428 --n 15
+# 指定特定資料夾：
+python tools\compare_det_onnx.py --success C:\path\s --fail C:\path\f --n 20
+```
+
+---
+
+## 資料集現況（2026-05-04）
+
+### Det dataset
+- **Labeled**: train 1,462 / val 366（總 1,828 張）
+- **Zip**: `dataset/det_dataset.zip`（84.9 MB，含 train 1558 + val 462 張，多的 96 張無 label 無害）
+- **來源**: `C:\Users\andy_ac_chen\Desktop\backup\success\` + `backup\fail\`
+- **Label 品質**: 良好，弧形/截斷邊緣等特殊案例有合理標記
+
+### Rec dataset
+- **Labeled**: train ~1,792 / val ~512（比舊版 833/208 翻倍）
+- **Zip**: `dataset/rec_dataset.zip`，在 Google Drive
 
 ---
 
 ## 原始資料來源
 
-標注圖片位於本機：
-- `C:\Users\andy_ac_chen\success\<日期>\`（已標注：success 類）
-- `C:\Users\andy_ac_chen\fail\<日期>\`（已標注：fail 類）
+```
+C:\Users\andy_ac_chen\Desktop\backup\success\<日期>\  ← 標注完成
+C:\Users\andy_ac_chen\Desktop\backup\fail\<日期>\    ← 標注完成
+```
+（注意：原本在 `C:\Users\andy_ac_chen\success\` 和 `fail\`，現在 backup 是主要位置）
 
-每個日期資料夾內有：
-- `*.jpg` 圖片（600×373 px）
-- `Label.txt`（PPOCRLabel 格式：`日期/檔名.jpg\t[{...}]`）
-- `fileState.txt`
-
-**尚未標注的資料夾**（圖片存在但 Label.txt 為空或不存在）：
-- success/20260416、20260417、20260418（部分）
-- fail/20260416（部分）
-
-可用 `tools/auto_label.py` 產生草稿，再用 PPOCRLabel 確認修正。
+每個日期資料夾內：`*.jpg`（600×373）、`Label.txt`（PPOCRLabel 格式）、`fileState.txt`
 
 ---
 
-## 完整 Pipeline
+## 標注規則（核心）
 
-```
-手機端 C++ (ONNX Runtime)
-    ↓ 收集大量圖片
-Python 環境標注 (PPOCRLabel) 或 auto_label.py 產生草稿
-    ↓ 產生 Label.txt（在各日期資料夾內）
-import_labeled_data.py（匯入並 flatten 到 dataset/images/）
-    ↓ dataset/images/Label.txt（合併所有標注）
-split_dataset.py（分割 train/val）
-    ↓ dataset/det/train/ + val/
-打包 det_dataset.zip 上傳 Google Drive
-    ↓
-Colab GPU 訓練 (train_det_colab.ipynb)
-    ↓ best_accuracy.pdparams
-匯出推論模型 → 轉 ONNX
-    ↓ ch_PP-OCRv4_det_infer.onnx
-部署至 C++ / 手機端
-```
-
----
-
-## 目錄結構
-
-```
-claudeProject/
-├── .claude/
-│   └── settings.json              ← Claude 專案層級權限設定（Bash(*) 自動允許）
-├── dataset/
-│   ├── images/                    ← 已 flatten 的訓練圖片 + 合併 Label.txt
-│   ├── det/
-│   │   ├── train/                 ← det 訓練集圖片（744 張）
-│   │   ├── val/                   ← det 驗證集圖片（186 張）
-│   │   ├── train_label.txt
-│   │   └── val_label.txt
-│   ├── det_dataset.zip            ← 上傳 Google Drive 用（39.5 MB）
-│   ├── rec/
-│   │   ├── train/                 ← rec 訓練 crop（833 張）
-│   │   ├── val/                   ← rec 驗證 crop（208 張）
-│   │   ├── train_label.txt
-│   │   └── val_label.txt
-│   └── rec_dataset.zip            ← 上傳 Google Drive 用（5.7 MB）
-├── configs/
-│   ├── det/
-│   │   ├── PP-OCRv4_mobile_det_finetune.yml
-│   │   └── PP-OCRv5_mobile_det_finetune.yml   ← 架構同 v4，僅預訓練資料不同
-│   └── rec/PP-OCRv4_mobile_rec_finetune.yml
-├── pretrained_models/             ← 預訓練權重（Colab 自動下載）
-├── output/
-│   ├── det/                       ← det 訓練產出
-│   └── rec/                       ← rec 訓練產出
-├── notebooks/
-│   ├── train_det_colab.ipynb      ← Colab det v4 訓練
-│   ├── train_det_v5_colab.ipynb   ← Colab det v5 訓練（多語 baseline 較高）
-│   └── train_rec_colab.ipynb      ← Colab rec 訓練
-├── eval_cpp_runner/               ← C++ ONNX 推論測試
-│   ├── models/                    ← ONNX 模型檔
-│   └── ocr_cpp/                   ← C++ 推論原始碼
-├── tools/
-│   ├── import_labeled_data.py     ← ★ 匯入並合併標注資料
-│   ├── auto_label.py              ← ★ 自動產生 Label.txt 草稿
-│   ├── split_dataset.py           ← 分割 train/val
-│   ├── prepare_rec_dataset.py     ← ★ 從 det 手動標注裁 crop 產生 rec 資料集
-│   ├── run_ocr.py                 ← 本機推論（畫紅框 + JSON）
-│   ├── export_model.py            ← 匯出推論模型
-│   ├── convert_to_onnx.py         ← 轉換為 ONNX
-│   └── download_pretrained.py     ← 下載預訓練模型
-├── CLAUDE.md                      ← ★ 給 Claude 看的專案說明（本文件）
-├── MANUAL.md                      ← ★ 給人看的操作手冊
-└── WORKFLOW.md                    ← 完整流程說明
-```
+- 只標日期相關資訊（EXP / MFG / MFD / 有效期間 / 製造日期 / 保存期限）
+- 不標：地址、電話、成分、批號、時間碼、一般文字
+- **視覺上同一列 = 一個框**（不拆分、不合并跨列）
+- 前綴有業務意義時保留（`EXP:2026.01.01` → 整段標）
+- 提示字在上、日期在下 → 只標日期那行
+- 日期後有批碼且同行 → 可整行標（`2025.10.03 AJ08` 可寫完整）
+- 不確定的圖片（看不清、模糊）→ 直接丟掉，不強制標
 
 ---
 
@@ -128,30 +139,16 @@ claudeProject/
 | 工具 | 路徑 |
 |------|------|
 | 本專案 | `C:\Users\andy_ac_chen\Desktop\claudeProject` |
-| PaddleOCR 原始碼 | `C:\Users\andy_ac_chen\Desktop\tool\PaddleOCR` |
-| PPOCRLabel 標記工具 | `C:\Users\andy_ac_chen\Desktop\tool\PPOCRLabel` |
-| PPOCRLabel venv Python | `C:\Users\andy_ac_chen\Desktop\tool\PPOCRLabel\venv\Scripts\python.exe` |
-| C++ 推論測試 | `eval_cpp_runner/build/Release/eval_runner.exe` |
+| PaddleOCR | `C:\Users\andy_ac_chen\Desktop\tool\PaddleOCR` |
+| PPOCRLabel | `C:\Users\andy_ac_chen\Desktop\tool\PPOCRLabel` |
+| PPOCRLabel Python | `C:\Users\andy_ac_chen\Desktop\tool\PPOCRLabel\venv\Scripts\python.exe` |
 | GitHub Repo | https://github.com/install88/trainingOcr |
-
----
-
-## 標注規則（重要）
-
-詳見 MANUAL.md 第一章。核心原則：
-- 只標日期相關資訊（EXP / MFG / 有效期間）
-- 不標地址、電話、成分、批號、時間碼
-- 前綴有明確業務意義時保留（EXP 2026.01.01 → 整段標）
-- 提示字在上、日期在下時，只標日期值那行
-- 日期後有附加碼時，只標日期本體（20260328 AM20 → 20260328）
+| Google Drive | `ocr_project/` → `output_det_v5/`、`output_rec/`、zip 檔案 |
 
 ---
 
 ## Claude 使用注意事項
 
-- 大多數 Bash 指令已設定為自動允許（見 `.claude/settings.json`）
-- 以下操作仍需確認或已被拒絕：
-  - `git push --force` / `-f`（防止強制推送）
-  - `rm -rf /` 或 `rm -rf C:` 等大範圍刪除
-  - `format`、`shutdown`、`reg delete` 等系統危險指令
-- git push 需要在本機 CMD 手動執行（Claude 環境無 TTY，無法輸入帳密）
+- Bash 指令大多自動允許（見 `.claude/settings.json`）
+- git push 需在本機 CMD 手動執行（Claude 無 TTY）
+- 禁止：`git push --force`、大範圍 `rm -rf`、`format`、`shutdown`

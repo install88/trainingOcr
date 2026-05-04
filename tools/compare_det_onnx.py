@@ -66,8 +66,8 @@ def preprocess(img_bgr, max_side=960):
 
 
 class DetRunner:
-    def __init__(self, onnx_path, thresh=0.2, box_thresh=0.4, unclip_ratio=2.0, use_dilation=True):
-        # thresh 0.3→0.2 (低信心中文前綴也納入), box_thresh 0.6→0.4 (救低信心日期),
+    def __init__(self, onnx_path, thresh=0.3, box_thresh=0.4, unclip_ratio=2.0, use_dilation=True):
+        # thresh 0.3 (對齊 config PostProcess), box_thresh 0.6→0.4 (救低信心日期),
         # unclip_ratio 2.0 (對齊 config PostProcess, 重訓後框自然變大不需要 2.5),
         # use_dilation True (橋接 dot/space 造成的碎片化)
         self.sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
