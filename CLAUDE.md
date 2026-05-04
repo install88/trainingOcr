@@ -6,7 +6,7 @@
 
 ---
 
-## 目前進度（2026-05-04 更新）
+## 目前進度（2026-05-04 更新，下午）
 
 | 階段 | 狀態 | 備註 |
 |------|------|------|
@@ -22,26 +22,29 @@
 | rec 轉 ONNX | 🔜 **待執行** | 訓練完成，尚未匯出 |
 | compare 工具驗證 | 🔜 **待執行** | 等 det 第二輪 ONNX 出來後跑 |
 | C++ 部署測試 | 🔜 未開始 | |
+| Colab Pro+ 成本簡報 | ✅ | `colab_vs_gcp成本_v2.pptx`，5 張，附訓練規模數字 |
 
 ---
 
 ## ⚠️ 當前最重要的待辦（依序執行）
 
-1. **git push det config**（已改好，尚未 push）
+1. **git push**（本機 CMD 手動執行，Claude 無 TTY）
    ```cmd
    cd C:\Users\andy_ac_chen\Desktop\claudeProject
-   git add configs/det/PP-OCRv5_mobile_det_finetune.yml tools/compare_det_onnx.py
-   git commit -m "det: shrink_ratio 0.4->0.3, remove Fliplr, Resize 3->2, unclip 1.5->2.0"
    git push
    ```
+   - `eb4320c`：det config 修正（shrink_ratio/unclip/Fliplr/Resize）← **已 commit，尚未 push**
+   - `e3f0175`：compare thresh 對齊 + CLAUDE.md 更新 ← **已 commit，尚未 push**
 
-2. **Colab 重跑 det 訓練**（`train_det_v5_colab.ipynb`，從 pretrained 開始，不是 epoch 25）
+2. **Colab 重跑 det 訓練**（`train_det_v5_colab.ipynb`，**從 pretrained 開始，不是 epoch 25**）
+   - 原因：shrink_ratio 從 0.4→0.3，前一輪 checkpoint 學到的 prob map 不相容，接續訓練會混亂
 
 3. **det best_model → 轉 ONNX** → 下載到 `eval_cpp_runner/models/ch_PP-OCRv4_det_infer_new.onnx`
 
 4. **rec best_accuracy → 轉 ONNX** → 下載到 `eval_cpp_runner/models/ch_PP-OCRv4_rec_infer_new.onnx`
 
 5. **跑 compare 驗證**：`python tools\compare_det_onnx.py --date 20260428 --n 15`
+   - 重點驗證：① 框是否不再截短（Det 修正效果）② 字母不再被換成數字（Rec 改善效果）
 
 ---
 
