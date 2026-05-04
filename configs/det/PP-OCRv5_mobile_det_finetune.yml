@@ -63,7 +63,7 @@ PostProcess:
   thresh: 0.3
   box_thresh: 0.6
   max_candidates: 1000
-  unclip_ratio: 1.5
+  unclip_ratio: 2.0
 
 Metric:
   name: DetMetric
@@ -84,9 +84,6 @@ Train:
     - CopyPaste: null
     - IaaAugment:
         augmenter_args:
-        - type: Fliplr
-          args:
-            p: 0.5
         - type: Affine
           args:
             rotate:
@@ -101,7 +98,7 @@ Train:
           args:
             size:
             - 0.5
-            - 3
+            - 2
     - EastRandomCropData:
         size:
         - 640
@@ -109,12 +106,12 @@ Train:
         max_tries: 50
         keep_ratio: true
     - MakeBorderMap:
-        shrink_ratio: 0.4
+        shrink_ratio: 0.3
         thresh_min: 0.3
         thresh_max: 0.7
         total_epoch: *epoch_num
     - MakeShrinkMap:
-        shrink_ratio: 0.4
+        shrink_ratio: 0.3
         min_text_size: 8
         total_epoch: *epoch_num
     - NormalizeImage:

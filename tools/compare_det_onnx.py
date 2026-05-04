@@ -24,6 +24,9 @@ PROJ = Path(r"C:/Users/andy_ac_chen/Desktop/claudeProject")
 MODELS = PROJ / "eval_cpp_runner" / "models"
 PRE_ONNX = MODELS / "ch_PP-OCRv4_det_infer.onnx"
 FT_ONNX = MODELS / "ch_PP-OCRv4_det_infer_new.onnx"
+REC_PRE_ONNX = MODELS / "ch_PP-OCRv4_rec_infer.onnx"
+REC_FT_ONNX = MODELS / "ch_PP-OCRv4_rec_infer_new.onnx"
+REC_DICT = Path(r"C:/Users/andy_ac_chen/Desktop/tool/PaddleOCR/ppocr/utils/ppocr_keys_v1.txt")
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -63,13 +66,16 @@ def preprocess(img_bgr, max_side=960):
 
 
 class DetRunner:
-    def __init__(self, onnx_path, thresh=0.3, box_thresh=0.6, unclip_ratio=1.5):
+    def __init__(self, onnx_path, thresh=0.2, box_thresh=0.4, unclip_ratio=2.0, use_dilation=True):
+        # thresh 0.3→0.2 (低信心中文前綴也納入), box_thresh 0.6→0.4 (救低信心日期),
+        # unclip_ratio 2.0 (對齊 config PostProcess, 重訓後框自然變大不需要 2.5),
+        # use_dilation True (橋接 dot/space 造成的碎片化)
         self.sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
         self.inp_name = self.sess.get_inputs()[0].name
         self.post = DBPostProcess(
             thresh=thresh, box_thresh=box_thresh,
             max_candidates=1000, unclip_ratio=unclip_ratio,
-            use_dilation=False, score_mode="fast", box_type="quad",
+            use_dilation=use_dilation, score_mode="fast", box_type="quad",
         )
 
     def __call__(self, img_bgr):
@@ -79,6 +85,78 @@ class DetRunner:
         result = self.post({"maps": out}, shape_list)
         boxes = result[0]["points"]
         return boxes
+
+
+class RecRunner:
+    """PP-OCRv4 rec ONNX 推論 (CTC decode)"""
+    def __init__(self, onnx_path, dict_path, target_h=48, target_w=320):
+        self.sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+        self.inp_name = self.sess.get_inputs()[0].name
+        self.target_h = target_h
+        self.target_w = target_w
+        # PaddleOCR CTC dict: 0=blank, 1..N=chars, N+1=space
+        with open(dict_path, "r", encoding="utf-8") as f:
+            chars = [line.rstrip("\n") for line in f]
+        self.chars = ["<blank>"] + chars + [" "]
+
+    def crop_quad(self, img, box):
+        pts = np.array(box, dtype=np.float32)
+        w = max(np.linalg.norm(pts[0] - pts[1]), np.linalg.norm(pts[2] - pts[3]))
+        h = max(np.linalg.norm(pts[1] - pts[2]), np.linalg.norm(pts[3] - pts[0]))
+        w, h = int(round(w)), int(round(h))
+        if w < 5 or h < 5:
+            return None
+        dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+        M = cv2.getPerspectiveTransform(pts, dst)
+        crop = cv2.warpPerspective(img, M, (w, h))
+        # 直立的字 → 旋轉 90
+        if h * 1.0 / max(w, 1) >= 1.5:
+            crop = np.rot90(crop)
+        return crop
+
+    def preprocess(self, crop):
+        h, w = crop.shape[:2]
+        ratio = w / max(h, 1)
+        new_w = min(int(self.target_h * ratio), self.target_w)
+        new_w = max(new_w, 1)
+        resized = cv2.resize(crop, (new_w, self.target_h))
+        x = resized.astype(np.float32) / 255.0
+        x = (x - 0.5) / 0.5
+        pad = np.zeros((self.target_h, self.target_w, 3), dtype=np.float32)
+        pad[:, :new_w, :] = x
+        return pad.transpose(2, 0, 1)[None]
+
+    def ctc_decode(self, preds, probs):
+        prev = -1
+        out = []
+        scores = []
+        for i, p in enumerate(preds):
+            if p != prev and p != 0:
+                if p < len(self.chars):
+                    out.append(self.chars[p])
+                    scores.append(float(probs[i]))
+            prev = p
+        text = "".join(out)
+        score = float(np.mean(scores)) if scores else 0.0
+        return text, score
+
+    def __call__(self, img, boxes):
+        results = []
+        for box in boxes:
+            try:
+                crop = self.crop_quad(img, box)
+                if crop is None:
+                    results.append(("", 0.0))
+                    continue
+                x = self.preprocess(crop)
+                out = self.sess.run(None, {self.inp_name: x})[0][0]
+                preds = np.argmax(out, axis=-1)
+                probs = np.max(out, axis=-1)
+                text, score = self.ctc_decode(preds, probs)
+                results.append((text, score))
+            except Exception as e:
+                results.append((f"[err:{e}]", 0.0))
+        return results
 
 
 def draw_boxes(img, boxes, color, label):
@@ -102,8 +180,12 @@ def main():
     print(f"=== 載入模型 ===")
     det_pre = DetRunner(PRE_ONNX)
     det_ft = DetRunner(FT_ONNX)
-    print(f"pretrained: {PRE_ONNX.name}")
-    print(f"finetuned:  {FT_ONNX.name}")
+    rec_pre_m = RecRunner(REC_PRE_ONNX, REC_DICT)
+    rec_ft_m = RecRunner(REC_FT_ONNX, REC_DICT)
+    print(f"det pretrained: {PRE_ONNX.name}")
+    print(f"det finetuned:  {FT_ONNX.name}")
+    print(f"rec pretrained: {REC_PRE_ONNX.name}")
+    print(f"rec finetuned:  {REC_FT_ONNX.name}")
 
     samples = []
     for tag, folder in [("fail", FAIL_DIR), ("success", SUCCESS_DIR)]:
@@ -119,6 +201,11 @@ def main():
             continue
         boxes_pre = det_pre(img)
         boxes_ft = det_ft(img)
+        # 對每個 det 結果都跑兩個 rec 模型
+        rec_pre_on_pre = rec_pre_m(img, boxes_pre)   # det pretrained + rec pretrained
+        rec_ft_on_pre  = rec_ft_m(img, boxes_pre)    # det pretrained + rec finetuned
+        rec_pre_on_ft  = rec_pre_m(img, boxes_ft)    # det finetuned  + rec pretrained
+        rec_ft_on_ft   = rec_ft_m(img, boxes_ft)     # det finetuned  + rec finetuned
         # box 寬度統計
         def widths(bs):
             ws = []
@@ -133,6 +220,10 @@ def main():
             "n_pre": len(boxes_pre), "n_ft": len(boxes_ft),
             "avg_w_pre": np.mean(w_pre) if w_pre else 0,
             "avg_w_ft": np.mean(w_ft) if w_ft else 0,
+            "rec_pre_on_pre": rec_pre_on_pre,
+            "rec_ft_on_pre":  rec_ft_on_pre,
+            "rec_pre_on_ft":  rec_pre_on_ft,
+            "rec_ft_on_ft":   rec_ft_on_ft,
         })
         # 畫並排
         vis_pre = draw_boxes(img, boxes_pre, (0, 200, 0), "PRETRAINED")
@@ -149,9 +240,22 @@ def main():
             "th,td{border:1px solid #ccc;padding:6px;text-align:center}",
             "th{background:#1f3a5f;color:white}",
             ".tag-fail{background:#fbeaea}.tag-succ{background:#e6f4ea}",
-            "img{max-width:1200px;border:1px solid #aaa;margin:5px 0}",
             ".row{display:flex;flex-direction:column;margin:20px;background:white;padding:15px;border-radius:6px}",
-            ".stats{font-size:14px;color:#555}</style></head><body>"]
+            ".stats{font-size:14px;color:#555;margin-bottom:8px}",
+            ".main{display:flex;gap:15px;align-items:flex-start}",
+            ".main img{flex:1;max-width:1100px;border:1px solid #aaa;height:auto}",
+            ".rec-panel{flex:0 0 540px;font-size:13px;display:flex;flex-direction:column;gap:8px}",
+            ".rec-block{background:#fafafa;border:1px solid #ddd;border-radius:4px;padding:8px;max-height:380px;overflow-y:auto}",
+            ".rec-block h4{margin:0 0 6px;font-size:13px}",
+            ".rec-block .pre{color:#0a7d2c}.rec-block .ft{color:#c0392b}",
+            ".rec-row{display:flex;gap:6px;border-bottom:1px dashed #eee;padding:2px 0}",
+            ".rec-row .col{flex:1;font-family:Consolas,monospace;font-size:12px;padding:2px 4px;overflow-wrap:anywhere}",
+            ".rec-row .col-old{background:#eef5ff}.rec-row .col-new{background:#fff3e0}",
+            ".rec-row .score{color:#888;font-size:10px;margin-left:4px}",
+            ".rec-head{display:flex;gap:6px;font-size:11px;font-weight:bold;color:#444;margin-bottom:3px}",
+            ".rec-head .col{flex:1;text-align:center;padding:2px}",
+            ".date-hit{background:#fff3a8;font-weight:bold}",
+            "</style></head><body>"]
     html.append(f"<h1>ONNX det 模型比較</h1>")
     html.append(f"<p><b>pretrained</b>: {PRE_ONNX.name}  vs  <b>finetuned</b>: {FT_ONNX.name}</p>")
 
@@ -179,15 +283,55 @@ def main():
     html.append(f"<p>finetuned 完全抓不到的圖: {miss} / {len(summary)}</p>")
 
     # 逐張圖
-    html.append("<h2>逐張對照 (左: pretrained 綠色框 ‧ 右: finetuned 紅色框)</h2>")
+    import re
+    DATE_RE = re.compile(r"(20\d{2})[\.\-/年]?(\d{1,2})[\.\-/月]?(\d{1,2})|"
+                         r"(\d{1,2})[\.\-/](\d{1,2})[\.\-/](20\d{2}|\d{2})|"
+                         r"\d{8}")
+
+    def esc(s):
+        return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+    def fmt_rec_pair(rec_old, rec_new):
+        """並排顯示舊 rec / 新 rec"""
+        if not rec_old:
+            return "<div class='rec-row'><div class='col'>(無 box)</div></div>"
+        head = ("<div class='rec-head'>"
+                "<div class='col'>rec_pretrained</div>"
+                "<div class='col'>rec_finetuned</div></div>")
+        rows = [head]
+        for (t_o, s_o), (t_n, s_n) in zip(rec_old, rec_new):
+            o_disp = esc(t_o) if t_o else "(空)"
+            n_disp = esc(t_n) if t_n else "(空)"
+            o_hit = "date-hit" if t_o and DATE_RE.search(t_o) else ""
+            n_hit = "date-hit" if t_n and DATE_RE.search(t_n) else ""
+            rows.append(
+                f"<div class='rec-row'>"
+                f"<div class='col col-old {o_hit}'>{o_disp}<span class='score'>{s_o:.2f}</span></div>"
+                f"<div class='col col-new {n_hit}'>{n_disp}<span class='score'>{s_n:.2f}</span></div>"
+                f"</div>"
+            )
+        return "".join(rows)
+
+    html.append("<h2>逐張對照 (左: det pretrained 綠框 ‧ 右: det finetuned 紅框)</h2>")
+    html.append("<p style='margin-left:20px;font-size:13px;color:#555'>"
+                "右側每個 det 框並排顯示 <b>rec_pretrained</b>（藍底）和 <b>rec_finetuned</b>（橘底）的辨識結果。"
+                "<span class='date-hit'>黃色標記</span>表示文字符合日期 regex</p>")
     for s in summary:
         cls = "tag-fail" if s['tag'] == "fail" else "tag-succ"
         fname = f"{s['idx']:02d}_{s['tag']}_{Path(s['name']).stem[:30]}.jpg"
         html.append(f"<div class='row {cls}'>")
         html.append(f"<div class='stats'>#{s['idx']} [{s['tag']}] {s['name']}</div>")
-        html.append(f"<div class='stats'>pretrained: {s['n_pre']} boxes  ‧  finetuned: {s['n_ft']} boxes</div>")
+        html.append(f"<div class='stats'>det pretrained: {s['n_pre']} boxes  ‧  det finetuned: {s['n_ft']} boxes</div>")
+        html.append("<div class='main'>")
         html.append(f"<img src='{fname}'>")
-        html.append("</div>")
+        html.append("<div class='rec-panel'>")
+        html.append(f"<div class='rec-block'><h4 class='pre'>DET PRETRAINED ({s['n_pre']})</h4>"
+                    f"{fmt_rec_pair(s['rec_pre_on_pre'], s['rec_ft_on_pre'])}</div>")
+        html.append(f"<div class='rec-block'><h4 class='ft'>DET FINETUNED ({s['n_ft']})</h4>"
+                    f"{fmt_rec_pair(s['rec_pre_on_ft'], s['rec_ft_on_ft'])}</div>")
+        html.append("</div>")  # rec-panel
+        html.append("</div>")  # main
+        html.append("</div>")  # row
     html.append("</body></html>")
 
     html_path = OUT_DIR / "report.html"
