@@ -58,11 +58,13 @@ Thumbs.db
 *.tmp
 gh.zip
 gh_cli/
-.claude/settings.local.json
+.claude/          # Claude Code 設定（本機專用）
+CLAUDE.md         # Claude Code 專案記憶（本機專用）
 
 # === 本機產物 / 備份（不上傳）===
 dataset_old_*/
 output/compare_*/
+yolo_dataset.zip
 dataset/*.zip
 podcast/
 *.pptx
